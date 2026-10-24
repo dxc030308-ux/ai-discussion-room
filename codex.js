@@ -44,18 +44,27 @@ export function codexArgs(images=[],{workspace,gateway}={}){
  return [...args,'-'];
 }
 export async function inspectCodex(subprocess,{workspace=false}={}){
+ // Try the portable command name first, then the Desktop-bundled location.
+ const candidates=[executable,'/usr/lib/chatgpt/resources/codex'];
  try{return await isolated(async cwd=>{
   const signal=AbortSignal.timeout(10000);
-  const path=subprocess?await subprocess.resolveExecutable(executable,environment(),signal):executable;
-  const version=(await invoke(subprocess,path,['--version'],cwd,signal)).trim();
-  if(!/^codex-cli \d+\.\d+\.\d+/.test(version))throw Error('Unverified Codex version; refusing execution');
   const models=JSON.parse(await readFile(workspace?workspaceCatalog:catalog,'utf8')).models;
   const m=models?.[0];
   if(models.length!==1||m.slug!==codexModel||m.experimental_supported_tools.length||m.tool_mode!=='direct'||m.multi_agent_version!==null||
     (workspace?(m.shell_type!=='unified_exec'||m.apply_patch_tool_type!=='freeform'):(m.shell_type!=='disabled'||m.apply_patch_tool_type!==null)))throw Error(`Invalid ${workspace?'workspace':'no-tools'} model catalog`);
-  return {available:true,path,version,model:codexModel,mode:workspace?'workspace-write':'discussion-only'};
+  let lastError;
+  for(const candidate of candidates){
+   try{
+    const resolved=subprocess?await subprocess.resolveExecutable(candidate,environment(),signal):candidate;
+    const version=(await invoke(subprocess,resolved,['--version'],cwd,signal)).trim();
+    if(!/^codex-cli \d+\.\d+\.\d+/.test(version)){lastError=Error(`Unverified Codex version at ${resolved}: ${version}`);continue;}
+    return {available:true,path:resolved,version,model:codexModel,mode:workspace?'workspace-write':'discussion-only'};
+   }catch(error){lastError=error;if(signal.aborted)throw error;}
+  }
+  throw Error(`Codex CLI not found or unusable: ${lastError?.message??'no candidate'}`);
  });}catch(e){return {available:false,reason:e.message};}
 }
+
 export function parseCodex(output,{workspace=false}={}){
  const rows=output.split('\n').filter(s=>s.trim()).map(s=>JSON.parse(s));
  for(const row of rows){

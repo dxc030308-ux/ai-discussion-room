@@ -152,3 +152,15 @@ test('workspace must be an absolute existing directory',async()=>{
  await assert.rejects(runCodex('x',{subprocess,workspace:'relative'}),/absolute/);
  await assert.rejects(runCodex('x',{subprocess,workspace:'/dev/null'}),/directory/);
 });
+
+test('Codex detection falls back when the PATH command is missing', async () => {
+ const subprocess = {
+  async resolveExecutable(candidate) { if (candidate === 'codex') throw Error('command "codex" was not found on PATH'); return candidate; },
+  spawn(spec) {
+   return { done: Promise.resolve({ exitCode: 0 }), collected: { stdout: { readFrom: () => ({ text: spec.argv.includes('--version') ? 'codex-cli 0.153.4' : '', lossy: false }) }, stderr: { readFrom: () => ({ text: '', lossy: false }) } } };
+  },
+ };
+ const result = await inspectCodex(subprocess);
+ assert.equal(result.available, true, result.reason);
+ assert.equal(result.path, '/usr/lib/chatgpt/resources/codex');
+});
