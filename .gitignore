@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.DS_Store
+# Local research notes and upstream snapshots, not part of the plugin.
+codex-config.schema.json
+codex-openai-models.rs
+codex-rs_*.rs
+codex-protocol/
+codex-local-probe.py
+# Internal cache-busting entry points; the published entry is entry.js.
+entry-member-*.js
+docs/VERIFICATION.md

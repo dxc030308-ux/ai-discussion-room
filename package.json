@@ -1,0 +1,39 @@
+{
+  "name": "@local/dsh-agent-discussion",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "AI discussion room for DSH: three participants analyse independently, review each other, then synthesise an evidence-linked decision.",
+  "exports": {
+    ".": "./entry.js",
+    "./host": "./host.js",
+    "./host-v1": "./host-v1.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "plugin",
+    "multi-agent",
+    "discussion",
+    "codex",
+    "claude"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/CHANGE_ME/dsh-agent-discussion.git"
+  }
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: local-agent-discussion-v1
+      name: '@local/dsh-agent-discussion'
