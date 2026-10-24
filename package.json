@@ -31,9 +31,5 @@
     "discussion",
     "codex",
     "claude"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "https://gitee.com/CHANGE_ME/dsh-agent-discussion.git"
-  }
+  ]
 }
