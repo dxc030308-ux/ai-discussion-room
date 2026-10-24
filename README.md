@@ -30,6 +30,11 @@
 
 ## 安装
 
+```bash
+git clone https://gitee.com/dxcdsb/ai-discussion-room.git ~/plugins/dsh-agent-discussion
+```
+
+
 > 插件依赖宿主运行时，必须在 DSH Desktop 已安装的机器上操作。下面命令里的
 > `<DSH 运行时目录>` 指 Desktop 自带的运行时，Linux 通常是
 > `~/.config/DSH Codex Desktop/dsh-runtime`，可以用

@@ -31,5 +31,13 @@
     "discussion",
     "codex",
     "claude"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://gitee.com/dxcdsb/ai-discussion-room.git"
+  },
+  "homepage": "https://gitee.com/dxcdsb/ai-discussion-room",
+  "bugs": {
+    "url": "https://gitee.com/dxcdsb/ai-discussion-room/issues"
+  }
 }
