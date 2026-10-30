@@ -17,7 +17,7 @@ const totalUsage=values=>{
   if(usages.some(usage=>usage.totalTokens===undefined))delete total.totalTokens;
   return total;
 };
-import { Discussion, validateRoom } from './core.js?member=12';
+import { Discussion, validateRoom, storeKey } from './core.js?templates=2';
 import { inspectCli, runCli } from './cli.js?member=12';
 
 export const inject=['commands','tools','storageDomain','agents','agentPresets','subprocess','attachments','webServer'];
@@ -29,12 +29,10 @@ export async function apply(ctx) {
   async function runDsh(parent,prompt,signal,images=[],access='discussion',onProgress,cwd=parent.session.header.cwd||process.cwd()){
     const factory=parent.ctx.agents;
     if(!factory)throw Error('DSH agent factory unavailable');
-    // The UI selection is mutable; Agent.options still contains the startup route.
-    const controller=parent.ctx.get?.('sessionController');
-    const selection=controller?.agents.selectionFor(parent).current;
     const {reasoningEffort:_startupEffort,...options}=parent.options;
-    // The DSH participant uses this pinned route; set to undefined to follow the session selection.
-    const route=dshMemberRoute||selection||parent.session.requestHeader?.()?.config||parent.options;
+    // DSH 0.2.2+ removed sessionController.agents.selectionFor; the parent's last request
+    // header is the model the user actually picked. dshMemberRoute still pins a route.
+    const route=dshMemberRoute||parent.session.requestHeader?.()?.config||parent.options;
     const selected={provider:route.provider,model:route.model,...route.reasoningEffort===undefined?{}:{reasoningEffort:route.reasoningEffort}};
     const subscriptions=[],attempts=new Map(),answers=[];
     let active,model=selected.model,state='thinking';
@@ -62,7 +60,8 @@ export async function apply(ctx) {
           }
         }));
         ctx.agentPresets.composeFrom(childCtx,parent.ctx);
-        installModelSelection(childCtx,{current:selected,assembled:undefined});
+        // DSH 0.2.2+ takes only the agent context; selection comes from agentOptions.
+        installModelSelection(childCtx);
         const tools=ctx.agentPresets.serviceFor(child,'tools')||childCtx.get('tools');
         if(!tools)throw Error('Cannot enforce discussion tool policy');
         const allowed=['read','read_image','write','edit','glob','grep','bash','job_output','job_list','job_kill','working_directory'];
@@ -115,7 +114,7 @@ export async function apply(ctx) {
   const views=new Map();
   const view=id=>{
     let engine=views.get(id);
-    if(!engine){engine=new Discussion({load:i=>table.get(i),save:async()=>{},capabilities:caps,run:async()=>{throw Error('Read-only discussion view');}});views.set(id,engine);}
+    if(!engine){engine=new Discussion({load:i=>table.get(storeKey(i)),save:async()=>{},capabilities:caps,run:async()=>{throw Error('Read-only discussion view');}});views.set(id,engine);}
     return engine;
   };
   ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/local-discussion/state',handler:(req,res)=>{
@@ -135,7 +134,7 @@ export async function apply(ctx) {
   function engine(agent){
     let entry=rooms.get(agent.id);
     if(entry && entry.agent!==agent){if(entry.engine.live.size)throw Error('Previous room owner is still stopping');rooms.delete(agent.id);entry=null;}
-    if(!entry){const e=new Discussion({load:id=>table.get(id),save:(id,r)=>table.put(id,structuredClone(r)),capabilities:caps,
+    if(!entry){const e=new Discussion({load:id=>table.get(storeKey(id)),save:(id,r)=>table.put(storeKey(id),structuredClone(r)),capabilities:caps,
       run:(speaker,prompt,signal,images,access,onProgress)=>runMember(agent,speaker,prompt,signal,images,access,onProgress)});entry={agent,engine:e};rooms.set(agent.id,entry);}
     return entry.engine;
   }

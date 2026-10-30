@@ -88,26 +88,26 @@ test('Stopping cancels the native child and removes subscriptions before disposa
  assert.equal(cancelled,true);assert.equal(disposed,true);assert.equal(rows.get(id).messages.find(m=>m.speaker==='dsh').status,'interrupted');
 });
 
-test('DSH discussion follows the selected route and clears startup effort',async()=>{
+test('DSH discussion uses the parent request route and drops stale startup effort',async()=>{
  let smoke,spec,restricted,guarded;const handlers=new Map();
- const current={provider:'current-provider',model:'current-model'};
- const ctx={webServer:{register:route=>{globalThis.__discussionRoute=route;return ()=>{};}},storageDomain:{open:async()=>({table:()=>({}),close:async()=>{}})},commands:{register(){}},tools:{register:t=>{if(t.name==='discussion_self_test')smoke=t;}},effect(){},
+ const ctx={webServer:{register:()=>()=>{}},storageDomain:{open:async()=>({table:()=>({}),close:async()=>{}})},commands:{register(){}},tools:{register:t=>{if(t.name==='discussion_self_test')smoke=t;}},effect(){},
   agentPresets:{composeFrom(){},serviceFor:()=>({get:name=>['read','write','edit'].includes(name),restrict:value=>restricted=value,guard:fn=>guarded=fn()})}};
  await apply(ctx);
- const parent={id:'parent',options:{provider:'stale-provider',model:'removed-model',reasoningEffort:'old-effort'},session:{header:{cwd:'/workspace'},requestHeader:()=>({config:{provider:'logged-provider',model:'logged-model'}})},ctx:{get:()=>({agents:{selectionFor:()=>({current})}}),agents:{create:async value=>{
-  spec=value;const child={id:'child',cancel(){},followup(){},whenIdle:async()=>completeFiles(value.meta.cwd),session:{snapshotEvents:()=>[{type:'turn/end',data:{reason:{kind:'completed'}}},{type:'assistant/message',data:{message:{content:[{type:'text',text:'2'}],source:{model:current.model}}}}]}};
+ // 0.2.2+: no selectionFor; the request header is the model the user actually selected.
+ const parent={id:'parent',options:{provider:'stale-provider',model:'removed-model',reasoningEffort:'old-effort'},session:{header:{id:'parent',cwd:'/workspace'},requestHeader:()=>({config:{provider:'logged-provider',model:'logged-model',reasoningEffort:'high'}})},ctx:{get:()=>undefined,agents:{create:async value=>{
+  spec=value;const child={id:'child',cancel(){},followup(){},whenIdle:async()=>completeFiles(value.meta.cwd),session:{snapshotEvents:()=>[{type:'turn/end',data:{reason:{kind:'completed'}}},{type:'assistant/message',data:{message:{content:[{type:'text',text:'2'}],source:{model:'logged-model'}}}}]}};
   value.setup({on:(name,fn)=>{handlers.set(name,fn);return ()=>{};}},child);
   return {agent:child,dispose:async()=>{}};
  }}}};
  const result=await smoke.execute({}, {agent:parent});assert.equal(result.text,'2');
- assert.equal(spec.agentOptions.model,'current-model');assert.equal(spec.agentOptions.provider,'current-provider');assert.equal(spec.agentOptions.reasoningEffort,undefined);
+ assert.equal(spec.agentOptions.model,'logged-model');assert.equal(spec.agentOptions.provider,'logged-provider');assert.equal(spec.agentOptions.reasoningEffort,'high');
+ assert.equal(spec.agentOptions.model==='removed-model',false,'stale startup model must not win');
  assert.deepEqual(restricted,{allow:['read','write','edit']});assert.equal(guarded,undefined);
- current.model='changed-after-creation';
- const assembled=await handlers.get('system-prompt/assemble')({}, {},async()=>({variables:{}}));assert.equal(assembled.variables.model,'current-model');
- const request=await handlers.get('agent/request')({},async()=>({provider:'wrong',model:'wrong',reasoningEffort:'inherited'}));
- assert.equal(request.model,'current-model');assert.equal(request.provider,'current-provider');assert.equal(request.reasoningEffort,undefined);
- parent.ctx.get=()=>undefined;
- await smoke.execute({}, {agent:parent});assert.equal(spec.agentOptions.model,'logged-model');
+ // Only the pre-step listener remains in this host version.
+ assert.deepEqual([...handlers.keys()].filter(k=>!['agent/assistant-stream','session/event'].includes(k)),['agent/pre-step']);
+ // Without a request header the startup options are the only evidence available.
+ parent.session.requestHeader=()=>undefined;
+ await smoke.execute({}, {agent:parent});assert.equal(spec.agentOptions.model,'removed-model');
 });
 
 test('read-only discussion route serves same-origin snapshots without transcript events',async()=>{

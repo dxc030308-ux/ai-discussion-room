@@ -1,10 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDecision, summaryInstruction, templates } from './decision.js';
+import { parseDecision, summaryInstruction, templates, resolveTemplate } from './decision.js';
 
 test('decision templates and summary schema are complete', () => {
-  assert.deepEqual(templates.map(item => item.id), ['review', 'architecture', 'risk', 'code', 'requirements']);
+  assert.deepEqual(templates.map(item => item.id), ['progress', 'requirements', 'review', 'code']);
   assert.ok(templates.every(item => item.label.zh && item.label.en && item.prompt && item.roundOne && item.roundTwo));
+  assert.equal(resolveTemplate('architecture'), resolveTemplate('review'));
+  assert.equal(resolveTemplate('risk'), resolveTemplate('review'));
+  assert.equal(resolveTemplate('missing'), undefined);
   for (const key of ['consensus', 'disagreements', 'unknowns', 'actions', 'followups', 'discussion-ledger']) assert.ok(summaryInstruction.includes(key));
 });
 

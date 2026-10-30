@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Discussion, memberTimeout} from './core.js';
+import {Discussion, memberTimeout, storeKey} from './core.js';
 function setup(run=async(s,p)=>({text:`${s} answer`,model:'mock'})){
  const db=new Map();const seen=[];const d=new Discussion({load:id=>db.get(id),save:async(id,r)=>{db.set(id,structuredClone(r));},capabilities:async()=>({claude:{available:true},codex:{available:false,reason:'unsafe'}}),run:async(...args)=>{seen.push(args);return run(...args);}});return {d,db,seen};
 }
@@ -11,7 +11,7 @@ test('two rounds share exact frozen first round and summarize; durable calls',as
  const view=await d.action('a',{action:'get'});assert.equal(view.calls,undefined);
 });
 test('every template keeps the main question anchored through independent analysis, mutual improvement and synthesis',async()=>{
- for(const templateId of [undefined,'review','architecture','risk','code','requirements']){
+ for(const templateId of [undefined,'review','architecture','risk','code','requirements','progress']){
   const {d,seen}=setup();
   await d.action('focus',{action:'start',question:'只解决保存时草稿丢失的问题',materials:'同事提出无关的图标改版建议',templateId,consent:true});await finish(d);
   assert.equal(seen.length,5);
@@ -93,7 +93,7 @@ test('branches preserve original context and compare only chosen frozen discussi
 });
 test('templates change round tasks and source metadata hides raw extracted text',async()=>{
  const {d,seen}=setup();await d.action('a',{action:'start',question:'q',templateId:'risk',consent:true,sources:[{name:'sample.py',mediaType:'text/plain',text:'source nonce',truncated:true}]});await finish(d);
- assert.match(seen[0][1],/Independently identify risks/);assert.match(seen[0][1],/source nonce/);const view=await d.get('a');assert.equal(view.sources[0].text,undefined);assert.equal(view.sources[0].characters,12);assert.equal(view.messages[0].files[0].truncated,true);
+ assert.match(seen[0][1],/cost, material risks and the smallest validation/);assert.match(seen[0][1],/source nonce/);const view=await d.get('a');assert.equal(view.sources[0].text,undefined);assert.equal(view.sources[0].characters,12);assert.equal(view.messages[0].files[0].truncated,true);
 });
 test('summary ledger validates real message IDs and new followups mark it stale',async()=>{
  const {d,db}=setup(async(s,p)=>({text:p.includes('discussion-ledger')?'Summary\n```discussion-ledger\n'+JSON.stringify({consensus:[{text:'supported',evidence:['invented']}],actions:[],followups:['How to validate?']})+'\n```':'evidence'}));
@@ -153,4 +153,43 @@ test('legacy interrupted messages regain unique call links and retry original co
  const view=await d.get('a');assert.equal(view.messages[0].callId,'old-call');assert.equal(view.messages[1].callId,'new-call');assert.equal(view.messages[1].status,'interrupted');
  await d.action('a',{action:'retry',messageId:'new',consent:true});await finish(d);
  assert.equal(seen.length,1);assert.equal(seen[0][1],'new frozen prompt');assert.deepEqual(seen[0][3],images);assert.equal(seen[0][4],'workspace');assert.equal(db.get('a').calls[1].messageId,'new');assert.equal(db.get('a').calls[1].round,2);assert.equal(db.get('a').messages.at(-1).round,2);assert.equal(db.get('a').messages.at(-1).retryOf,'new-call');
+});
+
+test('progress review rules reach both rounds, followups and synthesis without treating claims as verified',async()=>{
+ const {d,seen,db}=setup();
+ await d.action('audit',{action:'start',question:'审查另一助手修复保存故障的方向',templateId:'progress',access:'workspace',consent:true,materials:'助手会话片段：已执行十次重启但没有刷新后的数据对比；声称已修好。'});await finish(d);
+ assert.equal(seen.length,5);
+ for(const [,prompt] of seen){
+  assert.match(prompt,/Separate claimed completion, actions actually recorded and results independently verified/);
+  assert.match(prompt,/do not modify the project/);
+  assert.match(prompt,/source path, line or timestamp/);
+  assert.match(prompt,/If multiple records match/);
+ }
+ assert.match(seen[0][1],/repair direction, root-cause support, goal drift/);
+ assert.match(seen[2][1],/mistaken chronology, unsupported success claims/);
+ assert.match(seen[4][1],/continue \/ adjust \/ pause for evidence/);
+ assert.match(seen[4][1],/verification criterion for each/);
+ assert.match(seen[4][1],/discussion-ledger/);
+ assert.equal(db.get('audit').templateId,'progress');
+ seen.length=0;await d.action('audit',{action:'send',target:'dsh',text:'再核对最后一条测试结果'});await finish(d);
+ assert.match(seen[0][1],/Review only/);
+ const legacy=setup();await legacy.d.action('old',{action:'start',question:'老架构房间',templateId:'architecture',consent:true});await finish(legacy.d);
+ assert.equal(legacy.db.get('old').templateId,'architecture');
+ assert.match(legacy.seen[0][1],/Combine proposal review, architecture trade-offs/);
+});
+test('durable room keys stay path-safe for IM-originated session ids',async()=>{
+ // 实测来源：微信 DM 会话 id 含 ':' 与 '@'，per-record 布局直接拒写，面板随即 500。
+ const im='im:weixin_d9fa658fcbe9:dm:1793153378185:o9cgo80y2rvjo-bH_lXaRRHy5NCO0@im.wechat';
+ assert.equal(storeKey('01jsafe_session-1'),'01jsafe_session-1');   // 普通会话沿用原键，旧房间不迁移
+ const key=storeKey(im);
+ assert.match(key,/^[a-zA-Z0-9_-]+$/);                              // 满足存储层路径段约束
+ assert.equal(storeKey(im),key);                                    // 稳定，可重复读写同一房间
+ assert.notEqual(storeKey(`${im}x`),key);                           // 不同会话不塌缩成同一文件
+ const db=new Map();
+ const open=()=>new Discussion({load:id=>db.get(storeKey(id)),save:async(id,r)=>{db.set(storeKey(id),structuredClone(r));},capabilities:async()=>({}),run:async()=>{throw Error('no run')}});
+ await open().action(im,{action:'reset'});
+ assert.deepEqual([...db.keys()],[key]);
+ const view=await open().action(im,{action:'get'});                 // 换一个引擎实例仍能读回
+ assert.equal(view.status,'idle');
+ assert.equal(view.roomId,undefined);
 });

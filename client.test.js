@@ -37,14 +37,14 @@ test('elapsed and usage show only supplied observations without estimated totals
  assert.equal(usageText({input_tokens:12,output_tokens:3,cached_input_tokens:2}),'input_tokens: 12 · output_tokens: 3 · cached_input_tokens: 2');
  assert.equal(usageText({inputTokens:12}).includes('total'),false);
 });
-test('five local templates use localized briefs and distinct actual stage labels',()=>{
- assert.deepEqual(Object.keys(TEMPLATES),['review','architecture','risk','code','requirements']);
+test('four distinct scenarios have localized briefs, usage hints and stage labels',()=>{
+ assert.deepEqual(Object.keys(TEMPLATES),['progress','requirements','review','code']);
  const dictionaries=source.slice(source.indexOf('const dictionaries'),source.indexOf('const css'));
  const locales=[dictionaries.slice(dictionaries.indexOf('en: {'),dictionaries.indexOf('zh: {')),dictionaries.slice(dictionaries.indexOf('zh: {'))];
  for(const [id,keys] of Object.entries(TEMPLATES)) {
   assert.equal(keys.length,4);
   assert.equal(new Set(keys).size,4);
-  for(const key of [id+'Template',...keys])for(const locale of locales)assert.match(locale,new RegExp('\\b'+key+':'),key);
+  for(const key of [id+'Template',id+'Hint',...keys])for(const locale of locales)assert.match(locale,new RegExp('\\b'+key+':'),key);
  }
 });
 test('document validation enforces type, per-file byte limits and eight documents',()=>{
@@ -101,6 +101,34 @@ test('browser export helpers stay synchronized with the import-free source modul
  assert.ok(!html.includes('<img'));
  assert.ok(html.includes('&lt;img'));
  assert.ok(!/^\s*(?:import|export)\s/m.test(source));
+});
+test('rejected actions stay readable and primary fills keep a real foreground token',()=>{
+ // A start rejected by the host must outlive the next snapshot poll, or it reads as "nothing happened".
+ assert.ok(source.includes('reportError(failure.message, !read)'));
+ assert.ok(source.includes("if (!stickyError.current) setError('')"));
+ // --dsw-alias-brand-on-primary is not a DSH token: its #fff fallback turned the dark-theme
+ // primary fill (near-white brand-primary) into an unreadable white block.
+ assert.ok(!source.includes('brand-on-primary'));
+ assert.ok(source.includes('color:var(--dsw-alias-label-primary-foreground,#fff)!important'));
+ assert.ok(source.includes('border-left:2px solid var(--dsw-alias-label-primary-foreground,#fff)'));
+});
+test('PDF export prints the document instead of asking for a denied popup',()=>{
+ // The desktop shell answers every window.open with {action:'deny'}, so the popup path could
+ // only ever report "allow this page to open a print window" with no prompt to accept.
+ assert.ok(!/window\.open\(/.test(source));
+ assert.ok(!source.includes('popupBlocked'));
+ assert.ok(source.includes('const exportPdf = () =>'));
+ assert.ok(source.includes('className = \'ad-print-root\''));
+ assert.ok(source.includes('classList.add(\'ad-printing\')'));
+ assert.ok(source.includes('window.print()'));
+ assert.ok(source.includes('classList.remove(\'ad-printing\')'));
+ assert.ok(source.includes('html.ad-printing body>*:not(.ad-print-root){display:none!important}'));
+});
+test('page height is capped to the viewport so host clipping cannot hide the composer',()=>{
+ // height:100% collapses to auto when a host wrapper has no definite height; the page then grew to
+ // full content height and the host frame's overflow:hidden cut the start button away unreachable.
+ assert.ok(source.includes('max-height:100dvh'));
+ assert.ok(source.includes('min-height:0;max-height:100dvh;overflow:auto'));
 });
 test('all static translation keys exist in both locales',()=>{
  const dictionaries=source.slice(source.indexOf('const dictionaries'),source.indexOf('const css'));
